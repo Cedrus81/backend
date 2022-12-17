@@ -45,6 +45,10 @@ function setupSocketAPI(http) {
       )
       socket.userId = userId
     })
+    socket.on('update-task', task => {
+      logger.info(`task status: ${task.status}`)
+      gIo.emit('task-perforemed', task)
+    })
     socket.on('unset-user-socket', () => {
       logger.info(`Removing socket.userId for socket [id: ${socket.id}]`)
       delete socket.userId

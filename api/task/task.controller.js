@@ -1,7 +1,7 @@
 const taskService = require('./task.service.js')
-
+const socketService = require('../../services/socket.service')
 const logger = require('../../services/logger.service')
-
+const workerService = require('../../worker.microService')
 async function getTasks(req, res) {
   try {
     logger.debug('Getting Tasks')
@@ -28,12 +28,9 @@ async function getTaskById(req, res) {
 }
 
 async function addTask(req, res) {
-  // const { loggedinUser } = req
 
   try {
     const task = req.body
-    console.log('task:', task)
-    // task.owner = loggedinUser
     const addedTask = await taskService.add(task)
     res.json(addedTask)
   } catch (err) {
@@ -51,7 +48,6 @@ async function updateTask(req, res) {
   } catch (err) {
     logger.error('Failed to update task', err)
     res.status(500).send({ err: 'Failed to update task' })
-
   }
 }
 
@@ -59,7 +55,6 @@ async function removeTask(req, res) {
   try {
     const taskId = req.params.id
     const removedId = await taskService.remove(taskId)
-    console.log(removedId)
     res.send(removedId)
   } catch (err) {
     logger.error('Failed to remove task', err)
@@ -99,6 +94,45 @@ async function removeTaskMsg(req, res) {
   }
 }
 
+async function performTask(req, res) {
+  const task = req.body
+  res.send(await taskService.performTask(task))
+}
+
+var isWorkerOn
+function toggleWorker(req, res) {
+  isWorkerOn = req.body.isWorkerOn
+  runWorker()
+}
+
+async function runWorker() {
+  // The isWorkerOn is toggled by the button: "Start/Stop Task Worker"
+  if (!isWorkerOn) return
+  var delay = 5000
+  try {
+    let task = await taskService.getNextTask()
+    if (task) {
+      try {
+        task.status = 'running'
+        task = await taskService.update(task)
+        socketService.emitTo({ type: 'update-task', data: task })
+        task = await taskService.performTask(task)
+      } catch (err) {
+        console.log(`Failed Task`, err)
+      } finally {
+        socketService.emitTo({ type: 'update-task', data: task })
+        delay = 1
+      }
+    } else {
+      console.log('Snoozing... no tasks to perform')
+    }
+  } catch (err) {
+    console.log(`Failed getting next task to execute`, err)
+  } finally {
+    setTimeout(runWorker, delay)
+  }
+}
+
 module.exports = {
   getTasks,
   getTaskById,
@@ -106,5 +140,7 @@ module.exports = {
   updateTask,
   removeTask,
   addTaskMsg,
-  removeTaskMsg
+  removeTaskMsg,
+  performTask,
+  toggleWorker
 }

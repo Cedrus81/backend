@@ -1,6 +1,7 @@
 const dbService = require('../../services/db.service')
 const logger = require('../../services/logger.service')
 const utilService = require('../../services/util.service')
+const externalService = require('../../services/external.service.js')
 const ObjectId = require('mongodb').ObjectId
 
 async function query(filterBy = { txt: '' }) {
@@ -51,40 +52,42 @@ async function add(task) {
 async function update(task) {
     try {
         const collection = await dbService.getCollection('task')
-        console.log(task)
         var _id = ObjectId(task._id)
         var temp = task._id
         delete task._id
         await collection.updateOne({ _id }, { $set: task })
         task._id = temp
-        return task
     } catch (err) {
         logger.error(`cannot update task ${task._id}`, err)
         throw err
+    } finally {
+        return task
     }
 }
 
-async function addTaskMsg(taskId, msg) {
+async function performTask(task) {
     try {
-        msg.id = utilService.makeId()
-        const collection = await dbService.getCollection('task')
-        await collection.updateOne({ _id: ObjectId(taskId) }, { $push: { msgs: msg } })
-        return msg
-    } catch (err) {
-        logger.error(`cannot add task msg ${taskId}`, err)
-        throw err
+        task.status = 'running'
+        task = await update(task)
+
+        await externalService.execute(task)
+        task.doneAt = Date.now()
+        task.status = 'success'
+    } catch (error) {
+        task.status = 'failed'
+        task.errors.unshift(error)
+    } finally {
+        task.lastTried = Date.now()
+        task.triesCount++
+        return await update(task)
     }
 }
 
-async function removeTaskMsg(taskId, msgId) {
-    try {
-        const collection = await dbService.getCollection('task')
-        await collection.updateOne({ _id: ObjectId(taskId) }, { $pull: { msgs: { id: msgId } } })
-        return msgId
-    } catch (err) {
-        logger.error(`cannot add task msg ${taskId}`, err)
-        throw err
-    }
+async function getNextTask() {
+    let tasks = await query()
+    tasks = tasks.filter(task => (task.status !== 'success' && task.triesCount <= 5))
+        .sort((a, b) => (b.importance - a.importance))
+    return tasks[0]
 }
 
 module.exports = {
@@ -93,6 +96,6 @@ module.exports = {
     getById,
     add,
     update,
-    addTaskMsg,
-    removeTaskMsg
+    performTask,
+    getNextTask
 }
