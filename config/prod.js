@@ -1,4 +1,4 @@
 module.exports = {
-  dbURL: 'mongodb+srv://theUser:thePass@cluster0-klgzh.mongodb.net/test?retryWrites=true&w=majority',
-  dbName : 'tester_db'
+  dbURL: `mongodb+srv://erez:${process.env.DB_PASSWORD}@cluster0.9ggajqn.mongodb.net/?retryWrites=true&w=majority`,
+  dbName: 'task_db'
 }
